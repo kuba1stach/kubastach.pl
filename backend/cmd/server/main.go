@@ -1,22 +1,51 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"time"
 
-	"kubastach.pl/backend/pkg/api"
+	"kubastach.pl/backend/internal/config"
+	"kubastach.pl/backend/internal/handlers"
+	"kubastach.pl/backend/internal/repositories"
+	"kubastach.pl/backend/internal/services"
 )
 
 func main() {
-	// Create a new instance of our server implementation.
-	server := api.NewServer()
+	ctx := context.Background()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
 
-	// Create a new router.
-	router := api.NewRouter(server)
+	repo, err := repositories.NewCosmosRepository(ctx, cfg.CosmosConfig)
+	if err != nil {
+		log.Fatalf("failed to init cosmos repository: %v", err)
+	}
 
-	// Start the server.
-	log.Println("Starting server on :8080")
-	if err := http.ListenAndServe(":8080", router); err != nil {
-		log.Fatalf("Error starting server: %v", err)
+	progressService, err := services.NewProgressService(ctx, repo)
+	if err != nil {
+		log.Fatalf("failed to init progress service: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handlers.Register(mux, repo, progressService)
+
+	addr := ":8080"
+	if v := os.Getenv("PORT"); v != "" {
+		addr = ":" + v
+	}
+
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	log.Printf("listening on %s", addr)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("server error: %v", err)
 	}
 }
