@@ -69,9 +69,8 @@ components:
       properties:
         content:
           type: string
-        timestamp:
+        date:
           type: string
-          format: date-time
         media:
           type: array
           items:
